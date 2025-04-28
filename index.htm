@@ -69,75 +69,66 @@
 
   <div id="footer">
     </div>
-
+  
   <script>
-
     function mdToHtml(md) {
         return md
-        // **bold**
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        // _italic_
-        .replace(/_(.+?)_/g, '<em>$1</em>')
-        // line breaks → <br>
-        .replace(/\n/g, '<br>');
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/_(.+?)_/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
     }
-
-
-    const prompts = {
-      cringe:   "You’re a Gen Z meme lord turned life coach. Using viral slang (yeet, no cap, glow-up), craft a brief tongue-in-cheek inspirational quote that pokes fun at everyday cringe but ends on a motivational note.",
-      stoic:    "As a modern Stoic philosopher, write a short inspirational quote about accepting what you cannot change, mastering your emotions, and focusing on virtue. Keep it timeless and grounded.",
-      nihil:    "From a nihilist’s viewpoint, compose a pithy inspirational quote that acknowledges life’s inherent meaninglessness yet finds freedom or purpose in creating one’s own values.",
-      pokemon:  "Channel the voice of a Pokémon Trainer offering pep talk advice. Include a motivational line about teamwork, resilience, and evolving—just like a Pikachu powering up.",
-      gwash:    "In the formal 18th-century style of George Washington, write a dignified inspirational quote on leadership, duty, and perseverance. Use “shall”, “therefore”, etc., to evoke his voice."
-    };
-
+    
     const tiles = document.querySelectorAll('.tile');
     const quoteEl = document.getElementById('quote');
-
+    
     tiles.forEach(tile => {
-      tile.addEventListener('click', async () => {
-        // highlight
-        tiles.forEach(t=>t.classList.remove('active'));
-        tile.classList.add('active');
-
-        const imageSrc = 'images/' + tile.dataset.key + '.jpeg';
-        const imageEl = document.getElementById('quote-image');
-        imageEl.src = imageSrc;
-        imageEl.alt = tile.textContent;
-
-        quoteEl.textContent = 'Generating…';
-        const key = tile.dataset.key;
-        const prompt = prompts[key];
-
-        try {
-          const res = await fetch('http://localhost:11434/v1/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'gemma:2b',
-              prompt,
-              max_tokens: 80,
-              temperature: 0.8
-            })
-          });
-          const json = await res.json();
-          const text = json.choices?.[0]?.text?.trim() || 'No response';
-
-          // from usage report token statistics in footer div "usage":{"prompt_tokens":23,"completion_tokens":12,"total_tokens":35}
-          const promptTokens = json.usage?.prompt_tokens || 0;
-          const completionTokens = json.usage?.completion_tokens || 0;
-          const totalTokens = json.usage?.total_tokens || 0;
-          const footer = document.getElementById('footer');
-          footer.textContent = `Prompt Tokens: ${promptTokens}, Completion Tokens: ${completionTokens}, Total Tokens: ${totalTokens}`;
-
-          quoteEl.innerHTML = mdToHtml(text);
-        } catch (err) {
-          console.error(err);
-          quoteEl.textContent = 'Error generating quote.';
-        }
-      });
+        tile.addEventListener('click', async () => {
+            // Highlight the selected tile
+            tiles.forEach(t => t.classList.remove('active'));
+            tile.classList.add('active');
+    
+            // Update the image
+            const imageSrc = 'images/' + tile.dataset.key + '.jpeg';
+            const imageEl = document.getElementById('quote-image');
+            imageEl.src = imageSrc;
+            imageEl.alt = tile.textContent;
+    
+            quoteEl.textContent = 'Generating…';
+            const key = tile.dataset.key;
+    
+            try {
+                // Send the category to backend.php
+                const formData = new FormData();
+                formData.append('category', key);
+                
+                const res = await fetch('backend.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const json = await res.json();
+    
+                if (json.error) {
+                    throw new Error(json.error);
+                }
+    
+                const text = json.text || 'No response';
+                const promptTokens = json.usage?.prompt_tokens || 0;
+                const completionTokens = json.usage?.completion_tokens || 0;
+                const totalTokens = json.usage?.total_tokens || 0;
+    
+                // Update the footer with token usage
+                const footer = document.getElementById('footer');
+                footer.textContent = `Prompt Tokens: ${promptTokens}, Completion Tokens: ${completionTokens}, Total Tokens: ${totalTokens}`;
+    
+                // Display the formatted quote
+                quoteEl.innerHTML = mdToHtml(text);
+            } catch (err) {
+                console.error(err);
+                quoteEl.textContent = 'Error generating quote.';
+            }
+        });
     });
-  </script>
+    </script>
 
 </body>
 </html>
