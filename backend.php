@@ -14,13 +14,28 @@ $category = isset($_POST['category']) ? $_POST['category'] : '';
 
 if (!array_key_exists($category, $prompts)) {
     http_response_code(400);
-    echo json_encode(['error' => 'Invalid category']);
+    echo json_encode(['status' => 400, 'description' => 'Invalid category', 'text' => '', 'usage' => []]);
     exit;
 }
 
 $prompt = $prompts[$category];
+$cacheDir = "cache/$category";
+$tokenFile = 'token_usage.json';
 
-// Prepare the payload for Ollama
+// Ensure cache directory exists
+if (!is_dir($cacheDir)) {
+    mkdir($cacheDir, 0755, true);
+}
+
+// Initialize response variables
+$responseData = [
+    'status' => 503,
+    'description' => 'Ollama failed, using cached response',
+    'text' => 'No response',
+    'usage' => ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0]
+];
+
+// Try to get response from Ollama
 $payload = [
     'model' => 'gemma:2b',
     'prompt' => $prompt,
@@ -28,35 +43,65 @@ $payload = [
     'temperature' => 0.8
 ];
 
-// Initialize cURL
 $ch = curl_init('http://192.168.1.110:11434/v1/completions');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+curl_setopt($ch, CURLOPT_TIMEOUT, 5); // 5-second timeout
 
-// Execute the request
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-// Check for cURL errors or bad response
-if ($response === false || $httpCode !== 200) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Failed to communicate with Ollama server']);
-    curl_close($ch);
-    exit;
-}
-
+$curlError = curl_error($ch);
 curl_close($ch);
 
-// Parse the response and extract the text and usage data
-$responseData = json_decode($response, true);
-$text = $responseData['choices'][0]['text'] ?? 'No response';
-$usage = $responseData['usage'] ?? ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0];
+// Handle Ollama success
+if ($response !== false && $httpCode === 200 && empty($curlError)) {
+    $json = json_decode($response, true);
+    if (isset($json['choices'][0]['text'])) {
+        $responseData = [
+            'status' => 200,
+            'description' => 'Ollama success',
+            'text' => trim($json['choices'][0]['text']),
+            'usage' => $json['usage'] ?? ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0]
+        ];
 
-// Return the response with text and usage data
-echo json_encode([
-    'text' => trim($text),
-    'usage' => $usage
-]);
-?>  
+        // Save response to cache
+        $timestamp = date('YmdHis');
+        $cacheFile = "$cacheDir/$timestamp.json";
+        file_put_contents($cacheFile, json_encode([
+            'text' => $responseData['text'],
+            'usage' => $responseData['usage']
+        ]));
+    }
+}
+
+// Fallback to cached response if Ollama fails
+if ($responseData['status'] !== 200) {
+    $cachedFiles = glob("$cacheDir/*.json");
+    if (!empty($cachedFiles)) {
+        $randomFile = $cachedFiles[array_rand($cachedFiles)];
+        $cachedResponse = json_decode(file_get_contents($randomFile), true);
+        if ($cachedResponse) {
+            $responseData = [
+                'status' => 503,
+                'description' => 'Ollama failed, using cached response',
+                'text' => $cachedResponse['text'],
+                'usage' => $cachedResponse['usage']
+            ];
+        }
+    }
+}
+
+// Update total token usage
+$totalTokens = 0;
+if (file_exists($tokenFile)) {
+    $tokenData = json_decode(file_get_contents($tokenFile), true);
+    $totalTokens = $tokenData['total_tokens'] ?? 0;
+}
+$totalTokens += $responseData['usage']['total_tokens'];
+file_put_contents($tokenFile, json_encode(['total_tokens' => $totalTokens]));
+
+// Return the response
+echo json_encode($responseData);
+?>
