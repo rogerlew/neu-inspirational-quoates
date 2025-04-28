@@ -53,8 +53,9 @@
 <body>
 
     <h1 style="text-align: center;">Inspirational Quoates</h1>
+    <p style="text-align: center;">LLM App created by Janessa, Seth, A.J. Quinn, and Roger (VTD 425/Spring 2025)</p>
     <div class="image-container" style="text-align: center; margin: 1rem 0;">
-        <img id="quote-image" src="images/placeholder.jpeg" alt="Quote illustration" style="max-width: 100%; height: auto;">
+        <img id="quote-image" src="images/placeholder.jpeg" alt="Quote illustration" style="max-width: 100%; height: 200px;">
     </div>
     
   <div class="tiles">
@@ -116,12 +117,21 @@
                 const completionTokens = json.usage?.completion_tokens || 0;
                 const totalTokens = json.usage?.total_tokens || 0;
     
-                // Update the footer with token usage
-                const footer = document.getElementById('footer');
-                footer.textContent = `Prompt Tokens: ${promptTokens}, Completion Tokens: ${completionTokens}, Total Tokens: ${totalTokens}`;
-    
                 // Display the formatted quote
                 quoteEl.innerHTML = mdToHtml(text);
+
+
+                const costPerToken = 0.000000208; // Adjust based on your calculations
+
+                //query token_usage.json to get total_tokens_all_time
+                const tokenUsageRes = await fetch('token_usage.json');
+                const tokenUsageJson = await tokenUsageRes.json();
+                const totalTokensAllTime = tokenUsageJson.total_tokens || 0;
+
+                // Update the footer with token usage
+                const totalCost = totalTokensAllTime * costPerToken;
+                footer.textContent = `Prompt Tokens: ${promptTokens}, Completion Tokens: ${completionTokens}, Total Tokens: ${totalTokens}, Status: ${json.description}, Total Value of Tokens: $${totalCost.toFixed(6)}`;
+            
             } catch (err) {
                 console.error(err);
                 quoteEl.textContent = 'Error generating quote.';
